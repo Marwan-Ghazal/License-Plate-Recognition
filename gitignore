@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Static runtime files (created on upload)
+backend/static/uploads/
+backend/static/stages/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
