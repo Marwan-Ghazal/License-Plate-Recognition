@@ -35,12 +35,14 @@ for d in (STATIC_DIR, UPLOADS_DIR, STAGES_DIR):
 # ----- App -----
 app = FastAPI(title="License Plate Recognition API", version="0.1.0")
 
-# CORS — Vite dev server runs on 5173. Adjust for production.
+# CORS — Vite dev server runs on 8080 (5173 is default). Adjust for production.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
         "http://localhost:3000",  # Lovable preview
     ],
     allow_credentials=True,

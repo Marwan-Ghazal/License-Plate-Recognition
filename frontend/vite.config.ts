@@ -12,8 +12,8 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
     proxy: {
-      "/api": "http://localhost:8000",
-      "/static": "http://localhost:8000",
+      "/api":    { target: "http://localhost:8000", changeOrigin: true },
+      "/static": { target: "http://localhost:8000", changeOrigin: true },
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),

@@ -16,6 +16,12 @@ venv/
 backend/static/uploads/
 backend/static/stages/
 
+# Node
+node_modules/
+
+# Environment
+.env
+
 # IDE
 .vscode/
 .idea/
