@@ -6,7 +6,6 @@ backend/plates.db by default; override with the LPR_DB_PATH env var.
 
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -36,10 +35,9 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS plates (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id          TEXT NOT NULL UNIQUE,
+                plate_text      TEXT,
                 image_filename  TEXT NOT NULL,
-                recognized_text TEXT,
-                confidence      REAL,
-                bbox            TEXT,
                 timestamp       TEXT NOT NULL
             )
             """
@@ -47,24 +45,25 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_plates_timestamp ON plates(timestamp)"
         )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_plates_run_id ON plates(run_id)"
+        )
 
 
 def insert_plate(
+    run_id: str,
+    plate_text: str | None,
     image_filename: str,
-    recognized_text: str | None,
-    confidence: float | None,
-    bbox: tuple[int, int, int, int] | None,
 ) -> int:
     """Insert a recognition result. Returns the new row id."""
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    bbox_json = json.dumps(list(bbox)) if bbox is not None else None
     with get_conn() as conn:
         cur = conn.execute(
             """
-            INSERT INTO plates (image_filename, recognized_text, confidence, bbox, timestamp)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO plates (run_id, plate_text, image_filename, timestamp)
+            VALUES (?, ?, ?, ?)
             """,
-            (image_filename, recognized_text, confidence, bbox_json, timestamp),
+            (run_id, plate_text, image_filename, timestamp),
         )
         return cur.lastrowid
 
@@ -75,7 +74,7 @@ def get_plate(plate_id: int) -> dict | None:
         row = conn.execute(
             "SELECT * FROM plates WHERE id = ?", (plate_id,)
         ).fetchone()
-        return _row_to_dict(row) if row else None
+        return dict(row) if row else None
 
 
 def list_plates(limit: int = 100, offset: int = 0) -> list[dict]:
@@ -85,14 +84,4 @@ def list_plates(limit: int = 100, offset: int = 0) -> list[dict]:
             "SELECT * FROM plates ORDER BY id DESC LIMIT ? OFFSET ?",
             (limit, offset),
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
-
-
-def _row_to_dict(row: sqlite3.Row) -> dict:
-    d = dict(row)
-    if d.get("bbox"):
-        try:
-            d["bbox"] = json.loads(d["bbox"])
-        except (TypeError, json.JSONDecodeError):
-            d["bbox"] = None
-    return d
+        return [dict(r) for r in rows]

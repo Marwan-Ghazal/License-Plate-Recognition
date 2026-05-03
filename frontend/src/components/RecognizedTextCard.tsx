@@ -5,7 +5,6 @@ import { toast } from "sonner";
 
 interface Props {
   text: string;
-  confidence: number;
   timestamp: string;
   durationMs?: number;
   onTryAnother: () => void;
@@ -23,7 +22,7 @@ function formatTimestamp(iso: string) {
   }
 }
 
-export default function RecognizedTextCard({ text, confidence, timestamp, durationMs, onTryAnother }: Props) {
+export default function RecognizedTextCard({ text, timestamp, durationMs, onTryAnother }: Props) {
   async function copy() {
     try {
       await navigator.clipboard.writeText(text);
@@ -35,7 +34,7 @@ export default function RecognizedTextCard({ text, confidence, timestamp, durati
 
   return (
     <StageCard
-      index={5}
+      index={9}
       title="Recognized text"
       caption="Final OCR output from Tesseract's legacy engine."
       accentBorder
@@ -47,9 +46,8 @@ export default function RecognizedTextCard({ text, confidence, timestamp, durati
       </div>
 
       <div className="font-mono text-xs text-muted-foreground text-center">
-        Confidence: {Math.round((confidence ?? 0) * 100)}%
-        {typeof durationMs === "number" && ` · Read in ${durationMs}ms`}
-        {` · ${formatTimestamp(timestamp)}`}
+        {typeof durationMs === "number" && `Read in ${durationMs}ms · `}
+        {formatTimestamp(timestamp)}
       </div>
 
       <div className="mt-6 flex flex-col sm:flex-row gap-2 justify-center">

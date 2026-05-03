@@ -1,31 +1,30 @@
-export type BBox = [number, number, number, number];
-
 export interface HealthResponse {
   status: string;
 }
 
 export interface RecognizeStages {
-  original_with_bbox: string;
-  rectified: string;
-  binarized: string;
-  characters: string[];
+  grayscale: string;
+  bilateral: string;
+  edges: string;
+  morphology: string;
+  contours: string;
+  warped: string;
+  binary: string;
+  segmented: string;
 }
 
 export interface RecognizeResponse {
-  id: number;
-  recognized_text: string;
-  confidence: number;
-  bbox: BBox | null;
+  run_id: string;
+  plate_text: string;
   stages: RecognizeStages;
   timestamp: string;
 }
 
 export interface PlateRecord {
   id: number;
+  run_id: string;
+  plate_text: string | null;
   image_filename: string;
-  recognized_text: string | null;
-  confidence: number | null;
-  bbox: BBox | null;
   timestamp: string;
 }
 

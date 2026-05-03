@@ -12,8 +12,10 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
     proxy: {
-      "/api":    { target: "http://localhost:8000", changeOrigin: true },
-      "/static": { target: "http://localhost:8000", changeOrigin: true },
+      "/health":    { target: "http://localhost:8000", changeOrigin: true },
+      "/recognize": { target: "http://localhost:8000", changeOrigin: true },
+      "/plates":    { target: "http://localhost:8000", changeOrigin: true },
+      "/stages":    { target: "http://localhost:8000", changeOrigin: true },
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),

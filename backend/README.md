@@ -22,20 +22,21 @@ uvicorn backend.main:app --reload --port 8000
 ```
 
 Then:
-- Health check: <http://localhost:8000/api/health>
+- Health check: <http://localhost:8000/health>
 - Interactive docs: <http://localhost:8000/docs>
-- Static files: <http://localhost:8000/static/...>
+- Stage images: <http://localhost:8000/stages/{run_id}/{stage_name}>
 
 ## Endpoints
 
-| Method | Path                  | Description                             |
-| ------ | --------------------- | --------------------------------------- |
-| GET    | `/api/health`         | Liveness check                          |
-| POST   | `/api/recognize`      | Upload image, run pipeline, return stages |
-| GET    | `/api/plates`         | List recent recognitions (newest first) |
-| GET    | `/api/plates/{id}`    | Fetch a single recognition              |
+| Method | Path                          | Description                             |
+| ------ | ----------------------------- | --------------------------------------- |
+| GET    | `/health`                     | Liveness check                          |
+| POST   | `/recognize`                  | Upload image, run pipeline, return stages |
+| GET    | `/plates`                     | List recent recognitions (newest first) |
+| GET    | `/plates/{id}`                | Fetch a single recognition              |
+| GET    | `/stages/{run_id}/{stage}`    | Serve a pipeline debug image (PNG)      |
 
-### `POST /api/recognize`
+### `POST /recognize`
 
 **Request:** `multipart/form-data` with field `file` containing the image.
 
@@ -43,25 +44,31 @@ Then:
 
 ```json
 {
-  "id": 42,
-  "recognized_text": "ABC1234",
-  "confidence": 0.87,
-  "bbox": [120, 340, 180, 60],
+  "run_id": "abc123def456",
+  "plate_text": "ABC1234",
   "stages": {
-    "original_with_bbox": "/static/stages/abc123_original.jpg",
-    "rectified":          "/static/stages/abc123_rectified.jpg",
-    "binarized":          "/static/stages/abc123_binarized.jpg",
-    "characters": [
-      "/static/stages/abc123_char_0.jpg",
-      "/static/stages/abc123_char_1.jpg"
-    ]
+    "grayscale":  "/stages/abc123def456/grayscale",
+    "bilateral":  "/stages/abc123def456/bilateral",
+    "edges":      "/stages/abc123def456/edges",
+    "morphology": "/stages/abc123def456/morphology",
+    "contours":   "/stages/abc123def456/contours",
+    "warped":     "/stages/abc123def456/warped",
+    "binary":     "/stages/abc123def456/binary",
+    "segmented":  "/stages/abc123def456/segmented"
   },
-  "timestamp": "2026-05-02T14:30:00+00:00"
+  "timestamp": "2026-05-03T12:00:00+00:00"
 }
 ```
 
 **Response 422:** `{ "detail": "no_plate_detected" }`
 **Response 400:** `{ "detail": "File must be an image" }`
+
+### `GET /stages/{run_id}/{stage_name}`
+
+Serves the PNG debug image for a given pipeline run and stage. Valid stage
+names: `grayscale`, `bilateral`, `edges`, `morphology`, `contours`, `warped`,
+`binary`, `segmented`. Returns 404 for unknown stages or missing images, 400
+for path-traversal attempts.
 
 ## Database
 
@@ -71,17 +78,18 @@ SQLite at `backend/plates.db` (auto-created on first run). Override with
 ```sql
 CREATE TABLE plates (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id          TEXT NOT NULL UNIQUE,
+    plate_text      TEXT,
     image_filename  TEXT NOT NULL,
-    recognized_text TEXT,
-    confidence      REAL,
-    bbox            TEXT,         -- JSON [x, y, w, h]
     timestamp       TEXT NOT NULL -- ISO 8601 UTC
 );
+CREATE INDEX idx_plates_timestamp ON plates(timestamp);
+CREATE INDEX idx_plates_run_id    ON plates(run_id);
 ```
 
 ## Swapping the stub for the real pipeline
 
-When Person 1 has `pipeline.run_pipeline` ready, edit `backend/main.py`:
+When Person 1 has `pipeline.pipeline.run_pipeline` ready, edit `backend/main.py`:
 
 ```python
 # Remove:
@@ -89,41 +97,52 @@ from backend.pipeline_stub import run_pipeline_stub
 
 # Add:
 import cv2
-from pipeline import run_pipeline
+from pipeline.pipeline import run_pipeline
 ```
 
 Then in the `recognize` handler, replace:
 
 ```python
-result = run_pipeline_stub(upload_path, STAGES_DIR)
+result = run_pipeline_stub(upload_path, run_id, OUTPUTS_DIR)
 ```
 
 with:
 
 ```python
-image_bgr = cv2.imread(str(upload_path))
-result = run_pipeline(image_bgr, save_stages_to=STAGES_DIR)
+bgr = cv2.imread(str(upload_path))
+result = run_pipeline(bgr, run_id=run_id, outputs_dir=OUTPUTS_DIR)
 ```
 
-The response shape is identical, so the frontend needs no changes.
+The real `run_pipeline` returns the same flat-dict shape (`{stage_name: path_str, "plate_text": str}`),
+so the rest of the handler is unchanged.
 
 ## CORS
 
-Configured for `localhost:5173` (Vite dev), `127.0.0.1:5173`, and
-`localhost:3000` (Lovable preview). Add your deployed frontend origin to
-`allow_origins` in `main.py` before deploying.
+Configured for `localhost:5173`, `127.0.0.1:5173`, `localhost:8080`,
+`127.0.0.1:8080` (Vite dev), and `localhost:3000` (Lovable preview). Add your
+deployed frontend origin to `allow_origins` in `main.py` before deploying.
 
 ## Project layout
 
 ```
 backend/
 ├── __init__.py
-├── main.py              FastAPI app, routes, CORS, static mount
+├── main.py              FastAPI app, routes, CORS
 ├── db.py                SQLite layer (init, insert, get, list)
 ├── pipeline_stub.py     Temporary fake pipeline, swap for real one later
-├── requirements.txt
 ├── plates.db            (auto-created at runtime)
 └── static/
-    ├── uploads/         (saved user uploads)
-    └── stages/          (intermediate pipeline images)
+    └── uploads/         (saved user uploads)
+
+data/                    (project root, not inside backend/)
+└── outputs/
+    └── <run_id>/        (pipeline debug images per run)
+        ├── grayscale.png
+        ├── bilateral.png
+        ├── edges.png
+        ├── morphology.png
+        ├── contours.png
+        ├── warped.png
+        ├── binary.png
+        └── segmented.png
 ```

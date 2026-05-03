@@ -14,7 +14,9 @@ venv/
 
 # Static runtime files (created on upload)
 backend/static/uploads/
-backend/static/stages/
+
+# Pipeline debug images
+data/outputs/
 
 # Node
 node_modules/

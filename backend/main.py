@@ -1,11 +1,11 @@
 """FastAPI app for the license plate recognition demo.
 
 Endpoints:
-    GET  /api/health              - liveness check
-    POST /api/recognize           - upload an image, run pipeline, return stages
-    GET  /api/plates              - list recent recognitions
-    GET  /api/plates/{id}         - fetch a single recognition
-    GET  /static/<file>           - intermediate stage images
+    GET  /health                  - liveness check
+    POST /recognize               - upload an image, run pipeline, return stages
+    GET  /plates                  - list recent recognitions
+    GET  /plates/{id}             - fetch a single recognition
+    GET  /stages/{run_id}/{stage} - serve a pipeline debug image
 
 Run dev server:
     uvicorn backend.main:app --reload --port 8000
@@ -18,19 +18,26 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from backend import db
 from backend.pipeline_stub import run_pipeline_stub
 
 # ----- Paths -----
 BACKEND_DIR = Path(__file__).parent
+PROJECT_ROOT = BACKEND_DIR.parent
 STATIC_DIR = BACKEND_DIR / "static"
 UPLOADS_DIR = STATIC_DIR / "uploads"
-STAGES_DIR = STATIC_DIR / "stages"
+OUTPUTS_DIR = PROJECT_ROOT / "data" / "outputs"
 
-for d in (STATIC_DIR, UPLOADS_DIR, STAGES_DIR):
+for d in (STATIC_DIR, UPLOADS_DIR, OUTPUTS_DIR):
     d.mkdir(parents=True, exist_ok=True)
+
+# ----- Stage image route config -----
+ALLOWED_STAGES = {
+    "grayscale", "bilateral", "edges", "morphology",
+    "contours", "warped", "binary", "segmented",
+}
 
 # ----- App -----
 app = FastAPI(title="License Plate Recognition API", version="0.1.0")
@@ -50,8 +57,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
 
 @app.on_event("startup")
 def _startup() -> None:
@@ -59,12 +64,12 @@ def _startup() -> None:
 
 
 # ----- Endpoints -----
-@app.get("/api/health")
+@app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/api/recognize")
+@app.post("/recognize")
 async def recognize(file: UploadFile = File(...)) -> dict:
     """Accept an image upload, run the pipeline, persist the result, return stage URLs."""
     if not file.content_type or not file.content_type.startswith("image/"):
@@ -72,53 +77,49 @@ async def recognize(file: UploadFile = File(...)) -> dict:
 
     # Save upload with a unique stem so concurrent requests don't collide
     suffix = Path(file.filename or "upload.jpg").suffix or ".jpg"
-    request_id = uuid.uuid4().hex[:12]
-    upload_path = UPLOADS_DIR / f"{request_id}{suffix}"
+    run_id = uuid.uuid4().hex[:12]
+    upload_path = UPLOADS_DIR / f"{run_id}{suffix}"
 
     contents = await file.read()
     upload_path.write_bytes(contents)
 
     # Run pipeline (currently a stub; swap for real run_pipeline later)
     try:
-        result = run_pipeline_stub(upload_path, STAGES_DIR)
+        result = run_pipeline_stub(upload_path, run_id, OUTPUTS_DIR)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pipeline error: {e}") from e
 
-    if not result.get("recognized_text"):
+    if not result.get("plate_text"):
         raise HTTPException(status_code=422, detail="no_plate_detected")
 
     # Persist to DB
     plate_id = db.insert_plate(
+        run_id=run_id,
+        plate_text=result["plate_text"],
         image_filename=upload_path.name,
-        recognized_text=result["recognized_text"],
-        confidence=result.get("confidence"),
-        bbox=result.get("bbox"),
     )
 
-    # Convert filesystem paths to URLs the frontend can fetch
-    stages = result["stage_paths"]
+    # Build stage URLs from the flat dict returned by the pipeline
+    stages: dict[str, str] = {}
+    for name in ALLOWED_STAGES:
+        if name in result:
+            stages[name] = f"/stages/{run_id}/{name}"
+
     response = {
-        "id": plate_id,
-        "recognized_text": result["recognized_text"],
-        "confidence": result.get("confidence"),
-        "bbox": list(result["bbox"]) if result.get("bbox") else None,
-        "stages": {
-            "original_with_bbox": _to_url(stages["original_with_bbox"]),
-            "rectified": _to_url(stages["rectified"]),
-            "binarized": _to_url(stages["binarized"]),
-            "characters": [_to_url(p) for p in stages["characters"]],
-        },
+        "run_id": run_id,
+        "plate_text": result["plate_text"],
+        "stages": stages,
         "timestamp": db.get_plate(plate_id)["timestamp"],  # type: ignore[index]
     }
     return response
 
 
-@app.get("/api/plates")
+@app.get("/plates")
 def list_plates(limit: int = 100, offset: int = 0) -> dict:
     return {"plates": db.list_plates(limit=limit, offset=offset)}
 
 
-@app.get("/api/plates/{plate_id}")
+@app.get("/plates/{plate_id}")
 def get_plate(plate_id: int) -> dict:
     plate = db.get_plate(plate_id)
     if plate is None:
@@ -126,13 +127,14 @@ def get_plate(plate_id: int) -> dict:
     return plate
 
 
-# ----- Helpers -----
-def _to_url(path_str: str) -> str:
-    """Convert an absolute filesystem path under STATIC_DIR into a /static/... URL."""
-    p = Path(path_str).resolve()
-    try:
-        rel = p.relative_to(STATIC_DIR.resolve())
-    except ValueError:
-        # Defensive: if a stage file isn't under static/, return its name only
-        return f"/static/{p.name}"
-    return f"/static/{rel.as_posix()}"
+@app.get("/stages/{run_id}/{stage_name}")
+def get_stage(run_id: str, stage_name: str):
+    if stage_name not in ALLOWED_STAGES:
+        raise HTTPException(status_code=404, detail="Unknown stage")
+    # Reject path traversal
+    if "/" in run_id or ".." in run_id:
+        raise HTTPException(status_code=400, detail="Invalid run_id")
+    path = OUTPUTS_DIR / run_id / f"{stage_name}.png"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Stage image not found")
+    return FileResponse(path, media_type="image/png")

@@ -7,7 +7,7 @@ import {
 } from "@/types/api";
 
 const RAW_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || "";
-// In dev, prefer relative paths so the Vite proxy handles /api and /static.
+// In dev, prefer relative paths so the Vite proxy handles /health, /recognize, /plates, /stages.
 // If a base URL is provided explicitly, use it (e.g. production).
 const BASE = RAW_BASE.replace(/\/$/, "");
 
@@ -48,23 +48,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   async health(): Promise<HealthResponse> {
-    return request<HealthResponse>("/api/health");
+    return request<HealthResponse>("/health");
   },
 
   async recognize(file: File): Promise<RecognizeResponse> {
     const fd = new FormData();
     fd.append("file", file);
-    return request<RecognizeResponse>("/api/recognize", {
+    return request<RecognizeResponse>("/recognize", {
       method: "POST",
       body: fd,
     });
   },
 
   async listPlates(limit = 100, offset = 0): Promise<PlatesListResponse> {
-    return request<PlatesListResponse>(`/api/plates?limit=${limit}&offset=${offset}`);
+    return request<PlatesListResponse>(`/plates?limit=${limit}&offset=${offset}`);
   },
 
   async getPlate(id: number): Promise<PlateRecord> {
-    return request<PlateRecord>(`/api/plates/${id}`);
+    return request<PlateRecord>(`/plates/${id}`);
   },
 };
