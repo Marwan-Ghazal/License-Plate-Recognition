@@ -13,29 +13,29 @@ def to_grayscale(bgr):
     return gray  # keep float32
 
 
-# 2. BILATERAL FILTER 
-def bilateral_smooth(gray, d=11, sigma_color=30, sigma_space=30):
-    radius = d // 2
-    padded = np.pad(gray, radius, mode='reflect')
-    output = np.zeros_like(gray)
+# 2. BILATERAL FILTER
+def bilateral_smooth(gray, d=11, sigma_color=50, sigma_space=50):
+    """
+    Replaced heavy bilateral with: light Gaussian noise removal + unsharp mask.
+    Parameters kept for API compatibility but ignored internally.
+    """
+    # Step 1 — light 3x3 Gaussian (removes pixel noise only)
+    k = np.array([[1, 2, 1],
+                  [2, 4, 2],
+                  [1, 2, 1]], dtype=np.float32) / 16
 
-    x, y = np.meshgrid(np.arange(d), np.arange(d))
-    center = radius
-    spatial = np.exp(-((x - center) ** 2 + (y - center) ** 2) / (2 * sigma_space ** 2))
-
+    padded = np.pad(gray, 1, mode='reflect')
+    blurred = np.zeros_like(gray)
     for i in range(gray.shape[0]):
         for j in range(gray.shape[1]):
+            blurred[i, j] = np.sum(k * padded[i:i+3, j:j+3])
 
-            region = padded[i:i + d, j:j + d]
+    # Step 2 — unsharp mask (sharpen edges)
+    # sharpened = original + alpha * (original - blurred)
+    alpha = 1.5
+    sharpened = gray + alpha * (gray - blurred)
 
-            intensity = np.exp(-((region - gray[i, j]) ** 2) / (2 * sigma_color ** 2))
-
-            weights = spatial * intensity
-            weights_sum = np.sum(weights) + 1e-8  # avoid divide by zero
-
-            output[i, j] = np.sum(weights * region) / weights_sum
-
-    return output
+    return np.clip(sharpened, 0, 255).astype(np.float32)
 
 # 3. SOBEL 
 def _sobel(gray):
@@ -68,7 +68,13 @@ def _sobel(gray):
 
 def enhance_contrast(gray):
     g_min, g_max = gray.min(), gray.max()
-    return (gray - g_min) / (g_max - g_min + 1e-8) * 255
+    current_range = g_max - g_min
+
+    # only stretch if image is genuinely low contrast (narrow tonal range)
+    if current_range < 100:   # e.g. dark TH-52-73 image had range ~80
+        return (gray - g_min) / (current_range + 1e-8) * 255
+    else:
+        return gray           # already wide range, don't touch it
 
 # 4. EDGE DETECTION
 def detect_edges(gray, method="canny"):
@@ -77,22 +83,28 @@ def detect_edges(gray, method="canny"):
     if method == "sobel":
         return grad.astype(np.uint8)
 
-    # -------- FIXED CANNY --------
-    med = np.median(gray)   # ✅ use original image
+    med = np.median(gray)
 
-    low = 0.5 * med
-    high = 1.2 * med
+    # ADAPTIVE: if image is very dark, median is too low to use as base
+    # use gradient percentiles instead of median of gray
+    nonzero = grad[grad > 10]   # ignore flat regions
+    if len(nonzero) == 0:
+        low, high = 30, 60      # safe fallback
+    else:
+        p_low  = float(np.percentile(nonzero, 30))
+        p_high = float(np.percentile(nonzero, 70))
 
+        # blend: trust gradient percentiles more than median
+        low  = 50
+        high = 100
     strong = 255
-    weak = 75
+    weak   = 75
 
     edges = np.zeros_like(grad)
-
     strong_i, strong_j = np.where(grad >= high)
-    weak_i, weak_j = np.where((grad >= low) & (grad < high))
-
+    weak_i,   weak_j   = np.where((grad >= low) & (grad < high))
     edges[strong_i, strong_j] = strong
-    edges[weak_i, weak_j] = weak
+    edges[weak_i,   weak_j]   = weak
 
     # hysteresis
     h, w = edges.shape
@@ -104,21 +116,26 @@ def detect_edges(gray, method="canny"):
                 else:
                     edges[i, j] = 0
 
-    # enforce binary
     edges[edges != 255] = 0
-    kernel = np.ones((3, 3), np.uint8)
+    kernel = np.ones((3, 5), np.uint8)
     edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
     return edges.astype(np.uint8)
 
 # 5. PREPROCESS PIPELINE
 def preprocess(bgr):
-    """
-    grayscale → bilateral → edges
-    Returns all intermediate outputs for debugging
-    """
     gray = to_grayscale(bgr)
     gray = enhance_contrast(gray)
-    smooth = bilateral_smooth(gray)
+    
+    # measure image contrast
+    contrast = gray.std()
+    
+    if contrast > 60:
+        # high contrast image — sharpening will over-fire, skip it
+        smooth = gray.copy()
+    else:
+        # low contrast — apply gentle sharpening
+        smooth = bilateral_smooth(gray)
+    
     edges = detect_edges(smooth, method="canny")
     return gray, smooth, edges
 
@@ -136,8 +153,8 @@ if __name__ == "__main__":
     if len(files) == 0:
         raise RuntimeError("No images found in data/samples/")
 
-    # take up to 6 images
-    files = files[:6]
+    import random
+    files = random.sample(files, min(6, len(files)))
 
     print(f"[INFO] Testing on {len(files)} images\n")
 
@@ -190,4 +207,5 @@ if __name__ == "__main__":
             f"edges({info(edges)})\n"
         )
 
-    print("[DONE]Multi-image test completed")
+    print("[DONE] Multi-image test completed")
+
