@@ -154,7 +154,7 @@ if __name__ == "__main__":
         raise RuntimeError("No images found in data/samples/")
 
     import random
-    files = random.sample(files, min(6, len(files)))
+    files = random.sample(files, min(1000, len(files)))
 
     print(f"[INFO] Testing on {len(files)} images\n")
 
