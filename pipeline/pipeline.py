@@ -2,14 +2,17 @@ import sys
 
 from .utils import load_image, save_debug
 
+import cv2
+import numpy as np
+
 # Person 1
 from .preprocessing import preprocess, detect_edges
 
 # Person 2
-# from .localization import close_morphology, find_plate_candidates
+from .localization import apply_morphological_closing, filter_candidates, find_contours, preprocess_edge_map
 
 # Person 3
-# from .normalization import warp_plate, binarize
+from .normalization import binarize, clean_binary, warp_plate
 
 # Person 4
 # from .recognition import segment_chars, recognize
@@ -27,15 +30,17 @@ def run_pipeline(image_path):
         print(f"[ERROR] load_image: {e}")
         return {"error": str(e), "plate_text": ""}
 
-    # 2. Preprocessing
-
+    # 2. Preprocessing (Grayscale + smoothing)
     try:
         gray, smooth, _ = preprocess(bgr)
-        results["preprocess"] = smooth
-        save_debug(smooth, "preprocess")
+        results["grayscale"] = gray
+        results["bilateral"] = smooth
+        save_debug(gray, "grayscale")
+        save_debug(smooth, "bilateral")
     except Exception as e:
         print(f"[ERROR] preprocess: {e}")
         smooth = None
+        gray = None
 
     # 3. Edge Detection
     try:
@@ -46,41 +51,62 @@ def run_pipeline(image_path):
         print(f"[ERROR] detect_edges: {e}")
         edges = None
 
-    # 4. Morphology (Person 2)
+    # 4. Morphology + contour filtering (Person 2)
     try:
-        # mask = close_morphology(edges)
-        # results["morphology"] = mask
-        # save_debug(mask, "morphology")
-        mask = None
+        if edges is None:
+            raise ValueError("edges is None")
+
+        binary_edge = preprocess_edge_map(edges, threshold=200)
+        mask = apply_morphological_closing(binary_edge, kw=25, kh=7)
+        results["morphology"] = mask
+        save_debug(mask, "morphology")
+
+        contours = find_contours(mask)
+        candidates = filter_candidates(contours, mask.shape)
+
+        # Debug image: draw top candidates (up to 3) on a copy of the original.
+        contour_vis = bgr.copy()
+        for d in candidates[:3]:
+            cv2.drawContours(contour_vis, [d["contour"]], -1, (0, 255, 0), 2)
+        results["contours"] = contour_vis
+        save_debug(contour_vis, "contours")
     except Exception as e:
         print(f"[ERROR] morphology: {e}")
         mask = None
+        candidates = []
 
-    # 5. Plate Detection
+    # 5. Plate Detection -> pick best candidate and convert to a 4-point quad
     try:
-        # candidates = find_plate_candidates(mask, bgr)
-        # quad = candidates[0]
-        quad = None
+        if not candidates:
+            quad = None
+        else:
+            best = candidates[0]
+            rect = cv2.minAreaRect(best["contour"])
+            quad = cv2.boxPoints(rect).astype(np.float32)
     except Exception as e:
         print(f"[ERROR] plate detection: {e}")
         quad = None
 
-    # 6. Warp Plate
+    # 6. Warp Plate (Normalization - Stage 5)
     try:
-        # plate = warp_plate(bgr, quad)
-        # results["plate"] = plate
-        # save_debug(plate, "plate")
-        plate = None
+        if quad is None:
+            plate = None
+        else:
+            plate = warp_plate(bgr, quad, target_size=(300, 75))
+            results["warped"] = plate
+            save_debug(plate, "warped")
     except Exception as e:
         print(f"[ERROR] warp: {e}")
         plate = None
 
-    # 7. Binarization
+    # 7. Binarization (Normalization - Stage 6)
     try:
-        # binary = binarize(plate)
-        # results["binary"] = binary
-        # save_debug(binary, "binary")
-        binary = None
+        if plate is None:
+            binary = None
+        else:
+            binary = clean_binary(binarize(plate, method="otsu"))
+            results["binary"] = binary
+            save_debug(binary, "binary")
     except Exception as e:
         print(f"[ERROR] binarize: {e}")
         binary = None

@@ -1,6 +1,10 @@
 import cv2
 import os
-import matplotlib.pyplot as plt
+
+try:
+    import matplotlib.pyplot as plt  # optional (only used by show_grid)
+except ModuleNotFoundError:  # pragma: no cover
+    plt = None
 
 OUTPUT_DIR = "data/outputs"
 
@@ -30,6 +34,10 @@ def save_debug(image, name):
 
 
 def show_grid(images, titles):
+    if plt is None:
+        raise RuntimeError(
+            "matplotlib is not installed. Install it or avoid calling show_grid()."
+        )
     n = len(images)
     plt.figure(figsize=(4 * n, 4))
 
