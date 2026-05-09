@@ -5,7 +5,15 @@ import cv2
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 
+TARGET_WIDTH = 600
 
+def resize_to_width(bgr, width=TARGET_WIDTH):
+    """Resize so the image has the given width, preserving aspect ratio."""
+    h, w = bgr.shape[:2]
+    if w == width:
+        return bgr
+    new_h = int(h * (width / w))
+    return cv2.resize(bgr, (width, new_h), interpolation=cv2.INTER_AREA)
 # 1. GRAYSCALE 
 def to_grayscale(bgr):
     b = bgr[:, :, 0].astype(np.float32)
@@ -23,90 +31,47 @@ def bilateral_smooth(gray, d=5, sigma_color=15, sigma_space=15):
                                sigmaColor=sigma_color,
                                sigmaSpace=sigma_space)
 
+_RECT_KERN = cv2.getStructuringElement(cv2.MORPH_RECT, (13, 5))
 
 KX = np.array([[-1, 0, 1],
                [-2, 0, 2],
                [-1, 0, 1]], dtype=np.float32)
 
-KY = np.array([[-1, -2, -1],
-               [ 0,  0,  0],
-               [ 1,  2,  1]], dtype=np.float32)
- 
-# 3. SOBEL 
-def _sobel(gray):
+
+def sobelx(gray):
+
     padded  = np.pad(gray.astype(np.float32), 1, mode='reflect')
-    windows = sliding_window_view(padded, (3, 3))   # shape (H, W, 3, 3)
- 
-    gx = np.einsum('ijkl,kl->ij', windows, KX)
-    gy = np.einsum('ijkl,kl->ij', windows, KY)
- 
-    magnitude = np.sqrt(gx * gx + gy * gy)
-    return (magnitude / (magnitude.max() + 1e-8)) * 255
+    windows = sliding_window_view(padded, (3, 3))
+    return np.einsum('ijkl,kl->ij', windows, KX)
 
-def enhance_contrast(gray):
-    g_min, g_max = gray.min(), gray.max()
-    current_range = g_max - g_min
-
-    # only stretch if image is genuinely low contrast (narrow tonal range)
-    if current_range < 100:   # e.g. dark TH-52-73 image had range ~80
-        return (gray - g_min) / (current_range + 1e-8) * 255
-    else:
-        return gray           # already wide range, don't touch it
 
 # 4. EDGE DETECTION
 def detect_edges(gray, method="canny"):
-    grad = _sobel(gray)
+    g = gray.astype(np.uint8) if gray.dtype != np.uint8 else gray
+
+    # 1) BlackHat
+    blackhat = cv2.morphologyEx(g, cv2.MORPH_BLACKHAT, _RECT_KERN)
+
+    # 2) Sobel-x — manual implementation (vectorized for speed)
+    grad_x = sobelx(blackhat)
+    grad_x = np.absolute(grad_x)
+
+    # 3) Normalize to [0, 255] uint8
+    g_min, g_max = grad_x.min(), grad_x.max()
+    if g_max - g_min < 1e-6:
+        return np.zeros_like(g, dtype=np.uint8)
+    norm = ((grad_x - g_min) / (g_max - g_min) * 255).astype(np.uint8)
+    return norm
  
-    if method == "sobel":
-        return grad.astype(np.uint8)
- 
-    # Adaptive thresholds from the gradient distribution of THIS image.
-    low, high = 30.0, 70.0
- 
-    strong, weak = 255, 75
-    edges = np.where(grad >= high, strong,
-                     np.where(grad >= low, weak, 0)).astype(np.uint8)
- 
-    # Hysteresis (vectorized): a weak pixel survives iff any 3x3 neighbor
-    # is strong. Iterate until no new promotions happen, so weak pixels
-    # connected through a chain of weak-to-strong neighbors survive too.
-    strong_mask = (edges == strong)
-    weak_mask   = (edges == weak)
- 
-    while True:
-        padded   = np.pad(strong_mask, 1, mode='constant', constant_values=False)
-        nbr_view = sliding_window_view(padded, (3, 3))
-        has_strong_neighbor = nbr_view.any(axis=(2, 3))
-        promote = weak_mask & has_strong_neighbor
-        if not promote.any():
-            break
-        strong_mask |= promote
-        weak_mask   &= ~promote
- 
-    edges = np.where(strong_mask, 255, 0).astype(np.uint8)
- 
-    # Bridge tiny horizontal gaps so character strokes connect.
-    kernel = np.ones((1, 2), np.uint8)
-    edges  = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
-    return edges
 
 # 5. PREPROCESS PIPELINE
 def preprocess(bgr):
-    gray = to_grayscale(bgr)
-    gray = enhance_contrast(gray)
-    
-    # measure image contrast
-    contrast = gray.std()
-    
-    if contrast > 40:
-        # high contrast image — sharpening will over-fire, skip it
-        smooth = gray.copy()
-    else:
-        # low contrast — apply gentle sharpening
-        smooth = bilateral_smooth(gray)
-    
-    edges = detect_edges(smooth, method="canny")
-    return gray, smooth, edges
+
+    bgr_resized = resize_to_width(bgr, TARGET_WIDTH)
+    gray        = to_grayscale(bgr_resized)
+    smooth      = bilateral_smooth(gray)
+    edges       = detect_edges(smooth)
+    return bgr_resized, gray, edges
 
 
 if __name__ == "__main__":
@@ -144,26 +109,19 @@ if __name__ == "__main__":
             print(f"[{idx}] {fname}: failed to load\n")
             continue
  
-        gray, smooth, edges = preprocess(bgr)
+        bgr_r, gray, edges = preprocess(bgr)
  
-        try:
-            assert smooth.shape == gray.shape, "Shape mismatch"
-            assert smooth.dtype == gray.dtype, "Dtype mismatch"
-            unique_vals = np.unique(edges)
-            assert set(unique_vals).issubset({0, 255}), \
-                f"Edge values invalid: {unique_vals}"
-        except AssertionError as e:
-            print(f"[{idx}] {fname}: assertion failed: {e}\n")
-            continue
+        # Sanity assertions
+        assert bgr_r.shape[1] == TARGET_WIDTH, "resize failed"
+        assert gray.shape == bgr_r.shape[:2], "gray/bgr shape mismatch"
+        assert edges.shape == bgr_r.shape[:2], "edges/bgr shape mismatch"
+        assert edges.dtype == np.uint8, "edges must be uint8"
  
-        save(gray,   fname, "gray")
-        save(smooth, fname, "smooth")
-        save(edges,  fname, "edges")
+        save(gray,  fname, "gray")
+        save(edges, fname, "edges")
  
         print(f"[{idx}] {fname}")
         print(f"     gray   ({info(gray)})")
-        print(f"     smooth ({info(smooth)})")
         print(f"     edges  ({info(edges)})\n")
  
     print("[DONE]")
-
