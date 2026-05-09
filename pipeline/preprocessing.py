@@ -8,7 +8,6 @@ from numpy.lib.stride_tricks import sliding_window_view
 TARGET_WIDTH = 600
 
 def resize_to_width(bgr, width=TARGET_WIDTH):
-    """Resize so the image has the given width, preserving aspect ratio."""
     h, w = bgr.shape[:2]
     if w == width:
         return bgr

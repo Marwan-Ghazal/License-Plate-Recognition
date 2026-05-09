@@ -7,7 +7,6 @@ import numpy as np
 
 
 def order_quad_points(pts):
-    """Order 4 corner points as TL, TR, BR, BL (sum/diff trick)."""
     pts = np.array(list(pts), dtype=np.float32)
     if pts.shape != (4, 2):
         raise ValueError(f"Expected (4, 2), got {pts.shape}")
@@ -17,7 +16,6 @@ def order_quad_points(pts):
 
 
 def warp_plate(bgr, quad, target_size=(300, 75)):
-    """Perspective-correct the plate to a fixed-size rectangle."""
     w, h = target_size
     src = order_quad_points(quad)
     dst = np.array([[0, 0], [w-1, 0], [w-1, h-1], [0, h-1]], dtype=np.float32)
@@ -26,7 +24,6 @@ def warp_plate(bgr, quad, target_size=(300, 75)):
 
 
 def binarize(plate, method="otsu"):
-    """Binarize the warped plate. Output: characters white, background black."""
     gray = cv2.cvtColor(plate, cv2.COLOR_BGR2GRAY) if plate.ndim == 3 else plate
     if gray.dtype != np.uint8:
         gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
@@ -46,7 +43,6 @@ def binarize(plate, method="otsu"):
 
 
 def clean_binary(binary):
-    """Light morphological cleanup on a binary plate image (remove noise specks)."""
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     return cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
 

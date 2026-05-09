@@ -1,14 +1,3 @@
-"""Pipeline orchestrator — runs all stages and returns a flat dict.
-
-Contract (same shape as the stub in backend/pipeline_stub.py):
-
-    run_pipeline(image_bgr, run_id, outputs_dir) -> dict
-        keys: grayscale, bilateral, edges, morphology, contours,
-              warped, binary, segmented, plate_text
-        Each stage key maps to the absolute path of its saved PNG.
-        plate_text is the recognised plate string (empty if not found).
-"""
-
 from __future__ import annotations
 
 import sys
@@ -25,12 +14,6 @@ from .recognition import recognize
 
 
 def run_pipeline(image_bgr: np.ndarray, run_id: str, outputs_dir: Path) -> dict:
-    """Run the full LPR pipeline on a BGR image.
-
-    Saves 8 debug PNGs to ``outputs_dir / run_id / <stage>.png`` and returns
-    a flat dict mapping each stage name to its absolute path string, plus
-    ``plate_text`` with the OCR result.
-    """
     run_dir = outputs_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 

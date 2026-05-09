@@ -18,7 +18,6 @@ def _ocr(img, psm="7"):
 
 
 def segment_chars(binary):
-    """Connected components, filter to character-shaped, sort left-to-right."""
     n_labels, _, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
     H, W = binary.shape
     chars = []
@@ -33,7 +32,6 @@ def segment_chars(binary):
 
 
 def recognize(binary_plate):
-    """Read a license plate string from a binary plate image."""
     # Tesseract wants black-on-white; we have white-on-black, so invert.
     inv = cv2.bitwise_not(binary_plate)
 
