@@ -16,8 +16,7 @@ venv/
 backend/static/uploads/
 
 # Pipeline debug images
-data/outputs/
-
+data/
 # Node
 node_modules/
 
