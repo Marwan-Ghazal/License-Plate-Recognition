@@ -138,7 +138,7 @@ if __name__ == "__main__":
             print(f"[{idx}] {fname}: failed to load\n")
             continue
  
-        bgr_r, gray, edges = preprocess(bgr)
+        bgr_r, gray, _, edges = preprocess(bgr)
         candidates = localize(edges)
  
         # Visualization: draw candidates on the resized BGR

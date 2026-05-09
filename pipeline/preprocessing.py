@@ -63,7 +63,6 @@ def detect_edges(gray, method="canny"):
     norm = ((grad_x - g_min) / (g_max - g_min) * 255).astype(np.uint8)
     return norm
  
-
 # 5. PREPROCESS PIPELINE
 def preprocess(bgr):
 
@@ -71,7 +70,7 @@ def preprocess(bgr):
     gray        = to_grayscale(bgr_resized)
     smooth      = bilateral_smooth(gray)
     edges       = detect_edges(smooth)
-    return bgr_resized, gray, edges
+    return bgr_resized, gray, smooth, edges
 
 
 if __name__ == "__main__":
@@ -109,7 +108,7 @@ if __name__ == "__main__":
             print(f"[{idx}] {fname}: failed to load\n")
             continue
  
-        bgr_r, gray, edges = preprocess(bgr)
+        bgr_r, gray, smooth, edges = preprocess(bgr)
  
         # Sanity assertions
         assert bgr_r.shape[1] == TARGET_WIDTH, "resize failed"

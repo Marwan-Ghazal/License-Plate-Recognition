@@ -75,7 +75,7 @@ if __name__ == "__main__":
         if bgr is None:
             print(f"[{idx}] {fname}: failed to load"); continue
 
-        bgr_r, _, edges = preprocess(bgr)
+        bgr_r, _, _, edges = preprocess(bgr)
         candidates = localize(edges)
 
         text, rank = "", None

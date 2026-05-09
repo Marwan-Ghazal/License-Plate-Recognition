@@ -21,7 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from backend import db
-from backend.pipeline_stub import run_pipeline_stub
+import cv2
+from pipeline.pipeline import run_pipeline
 
 # ----- Paths -----
 BACKEND_DIR = Path(__file__).parent
@@ -83,9 +84,12 @@ async def recognize(file: UploadFile = File(...)) -> dict:
     contents = await file.read()
     upload_path.write_bytes(contents)
 
-    # Run pipeline (currently a stub; swap for real run_pipeline later)
+    # Run pipeline
     try:
-        result = run_pipeline_stub(upload_path, run_id, OUTPUTS_DIR)
+        bgr = cv2.imread(str(upload_path))
+        if bgr is None:
+            raise ValueError("Could not read uploaded image")
+        result = run_pipeline(bgr, run_id, OUTPUTS_DIR)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pipeline error: {e}") from e
 

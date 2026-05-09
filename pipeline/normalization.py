@@ -45,6 +45,12 @@ def binarize(plate, method="otsu"):
     return b
 
 
+def clean_binary(binary):
+    """Light morphological cleanup on a binary plate image (remove noise specks)."""
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    return cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+
 # ----- Self-verification -----
 if __name__ == "__main__":
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -69,7 +75,7 @@ if __name__ == "__main__":
             print(f"[{idx}] {fname}: failed to load")
             continue
 
-        bgr_r, _, edges = preprocess(bgr)
+        bgr_r, _, _, edges = preprocess(bgr)
         candidates = localize(edges)
 
         if not candidates:
