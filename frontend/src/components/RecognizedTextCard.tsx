@@ -36,7 +36,7 @@ export default function RecognizedTextCard({ text, timestamp, durationMs, onTryA
     <StageCard
       index={9}
       title="Recognized text"
-      caption="Final OCR output from Tesseract's legacy engine."
+      caption="Best OCR result: whole-plate vs. per-character Tesseract, first candidate with ≥3 chars wins."
       accentBorder
     >
       <div className="py-8 md:py-10 flex items-center justify-center">

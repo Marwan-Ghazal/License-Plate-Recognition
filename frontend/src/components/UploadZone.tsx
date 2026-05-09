@@ -8,7 +8,6 @@ const MAX_BYTES = 10 * 1024 * 1024;
 interface Props {
   onSubmit: (file: File) => void;
   loading: boolean;
-  externalFile?: File | null;
 }
 
 function formatSize(bytes: number) {
@@ -17,17 +16,12 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export default function UploadZone({ onSubmit, loading, externalFile }: Props) {
+export default function UploadZone({ onSubmit, loading }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (externalFile) handleFile(externalFile);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [externalFile]);
 
   useEffect(() => {
     if (!file) {

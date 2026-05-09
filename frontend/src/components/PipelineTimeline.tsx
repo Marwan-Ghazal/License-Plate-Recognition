@@ -1,7 +1,9 @@
 import {
   Filter,
   Activity,
-  Crop,
+  Scan,
+  Grid3X3,
+  BoxSelect,
   Frame,
   Binary,
   Type as TypeIcon,
@@ -10,37 +12,49 @@ import {
 const steps = [
   {
     icon: Filter,
-    title: "Preprocess",
+    title: "Grayscale",
     body:
-      "Convert to grayscale and apply a bilateral filter to smooth noise while preserving plate edges.",
+      "Weighted RGB→gray conversion (0.114B + 0.587G + 0.299R), resized to 600px width.",
+  },
+  {
+    icon: Filter,
+    title: "Bilateral Filter",
+    body:
+      "Edge-preserving bilateral smooth (d=5, σ_color=15, σ_space=15) removes noise while keeping plate edges sharp.",
   },
   {
     icon: Activity,
     title: "Edge Detection",
-    body: "Canny or Sobel highlights character boundaries against the plate background.",
+    body: "BlackHat morph + Sobel-x gradient highlights horizontal plate boundaries, normalized to 0–255.",
   },
   {
-    icon: Crop,
-    title: "Localize",
+    icon: Scan,
+    title: "Morphology",
     body:
-      "Morphological closing with a wide horizontal kernel merges characters into one blob; contour filtering by aspect ratio and area keeps only plate-shaped candidates.",
+      "Otsu threshold on edge map → morphological closing with a 15×5 kernel connects edge fragments into plate-shaped regions.",
   },
   {
-    icon: Frame,
-    title: "Rectify",
-    body: "Four-point perspective transform warps the candidate to a clean, axis-aligned rectangle.",
+    icon: Grid3X3,
+    title: "Contours",
+    body:
+      "External contours extracted, filtered by aspect ratio 2.0–8.0 and minimum size 30×10px. Up to 5 candidates ranked by area.",
+  },
+  {
+    icon: BoxSelect,
+    title: "Warp",
+    body: "Best candidate's min-area-rect → 4-point perspective transform → 300×75px axis-aligned rectangle.",
   },
   {
     icon: Binary,
     title: "Binarize",
     body:
-      "Otsu or adaptive threshold separates characters from background; auto-inverts so characters are white on black.",
+      "Otsu threshold + auto-invert so characters are white on black background.",
   },
   {
     icon: TypeIcon,
-    title: "Recognize",
+    title: "Segment + OCR",
     body:
-      "Characters split via connected components or vertical projection, then read by Tesseract's legacy OCR engine.",
+      "Connected-component segmentation → Tesseract OCR (PSM 7, A-Z0-9 whitelist, 3× upscale). Candidates tried sequentially; first producing ≥3 chars wins.",
   },
 ];
 
@@ -49,7 +63,7 @@ export default function PipelineTimeline() {
     <section id="pipeline" className="container py-16 md:py-24">
       <div className="mb-12 max-w-2xl">
         <p className="font-mono text-xs uppercase tracking-wider text-primary mb-3">The Pipeline</p>
-        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Six deterministic stages</h2>
+        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Eight deterministic stages</h2>
         <p className="mt-3 text-muted-foreground">
           Every stage is inspectable and documented. No neural networks, no black boxes — just classical
           computer vision composed end to end.
