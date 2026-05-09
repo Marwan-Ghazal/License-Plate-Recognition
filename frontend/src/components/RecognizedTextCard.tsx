@@ -40,9 +40,15 @@ export default function RecognizedTextCard({ text, timestamp, durationMs, onTryA
       accentBorder
     >
       <div className="py-8 md:py-10 flex items-center justify-center">
-        <p className="font-mono text-4xl md:text-5xl font-medium tracking-[0.08em] text-center break-all">
-          {text || "—"}
-        </p>
+        {text ? (
+          <p className="font-mono text-4xl md:text-5xl font-medium tracking-[0.08em] text-center break-all">
+            {text}
+          </p>
+        ) : (
+          <p className="text-lg text-muted-foreground text-center">
+            No plate text detected — try a clearer photo with the plate visible and well-lit.
+          </p>
+        )}
       </div>
 
       <div className="font-mono text-xs text-muted-foreground text-center">

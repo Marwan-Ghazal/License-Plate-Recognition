@@ -10,6 +10,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api, resolveAsset } from "@/lib/api";
 import { ApiError, RecognizeResponse } from "@/types/api";
 
+const STAGE_CARDS = [
+  { key: "grayscale",  title: "Grayscale",       caption: "Converted to single-channel grayscale for processing.", wide: true },
+  { key: "bilateral",  title: "Bilateral filter", caption: "Noise reduction while preserving edges via bilateral filtering.", wide: true },
+  { key: "edges",      title: "Edge detection",   caption: "BlackHat + Sobel-x edge map to highlight plate boundaries.", wide: true },
+  { key: "morphology", title: "Morphology",        caption: "Morphological closing to connect edge fragments into contours.", wide: true },
+  { key: "contours",   title: "Contours",          caption: "Contour detection and filtering by aspect ratio to find the plate.", wide: true },
+  { key: "warped",     title: "Warped",            caption: "Perspective-corrected to a clean axis-aligned rectangle.", wide: false },
+  { key: "binary",     title: "Binary",            caption: "Otsu threshold + auto-invert so characters are white on black.", wide: false },
+  { key: "segmented",  title: "Segmented",         caption: "Split via connected components or vertical projection.", wide: false },
+] as const;
+
 const PRESETS = [
   { label: "Clear plate", path: "/samples/clear.jpg" },
   { label: "Angled plate", path: "/samples/angled.jpg" },
@@ -122,101 +133,22 @@ export default function DemoPage() {
         {/* Results */}
         {result && (
           <div className="max-w-3xl mx-auto mt-12 space-y-6">
-            <StageCard
-              index={1}
-              title="Grayscale"
-              caption="Converted to single-channel grayscale for processing."
-            >
-              <img
-                src={resolveAsset(result.stages.grayscale)}
-                alt="Grayscale"
-                className="mx-auto max-w-full md:max-w-[800px] rounded-md border border-border"
-              />
-            </StageCard>
-
-            <StageCard
-              index={2}
-              title="Bilateral filter"
-              caption="Noise reduction while preserving edges via bilateral filtering."
-            >
-              <img
-                src={resolveAsset(result.stages.bilateral)}
-                alt="Bilateral filter"
-                className="mx-auto max-w-full md:max-w-[800px] rounded-md border border-border"
-              />
-            </StageCard>
-
-            <StageCard
-              index={3}
-              title="Edge detection"
-              caption="Canny edge detection to highlight plate boundaries."
-            >
-              <img
-                src={resolveAsset(result.stages.edges)}
-                alt="Edges"
-                className="mx-auto max-w-full md:max-w-[800px] rounded-md border border-border"
-              />
-            </StageCard>
-
-            <StageCard
-              index={4}
-              title="Morphology"
-              caption="Morphological closing to connect edge fragments into contours."
-            >
-              <img
-                src={resolveAsset(result.stages.morphology)}
-                alt="Morphology"
-                className="mx-auto max-w-full md:max-w-[800px] rounded-md border border-border"
-              />
-            </StageCard>
-
-            <StageCard
-              index={5}
-              title="Contours"
-              caption="Contour detection and filtering by aspect ratio to find the plate."
-            >
-              <img
-                src={resolveAsset(result.stages.contours)}
-                alt="Contours"
-                className="mx-auto max-w-full md:max-w-[800px] rounded-md border border-border"
-              />
-            </StageCard>
-
-            <StageCard
-              index={6}
-              title="Warped"
-              caption="Perspective-corrected to a clean axis-aligned rectangle."
-            >
-              <img
-                src={resolveAsset(result.stages.warped)}
-                alt="Warped"
-                className="mx-auto max-w-full md:max-w-[400px] rounded-md border border-border"
-              />
-            </StageCard>
-
-            <StageCard
-              index={7}
-              title="Binary"
-              caption="Otsu or adaptive threshold; auto-inverted so characters are white on black."
-            >
-              <img
-                src={resolveAsset(result.stages.binary)}
-                alt="Binary"
-                className="mx-auto max-w-full md:max-w-[400px] rounded-md border border-border"
-              />
-            </StageCard>
-
-            <StageCard
-              index={8}
-              title="Segmented"
-              caption="Split via connected components or vertical projection."
-            >
-              <img
-                src={resolveAsset(result.stages.segmented)}
-                alt="Segmented"
-                className="mx-auto max-w-full md:max-w-[400px] rounded-md border border-border"
-              />
-            </StageCard>
+            {STAGE_CARDS.map((s, i) =>
+              result.stages[s.key] ? (
+                <StageCard
+                  key={s.key}
+                  index={i + 1}
+                  title={s.title}
+                  caption={s.caption}
+                >
+                  <img
+                    src={resolveAsset(result.stages[s.key])}
+                    alt={s.title}
+                    className={s.wide ? "mx-auto max-w-full md:max-w-[800px] rounded-md border border-border" : "mx-auto max-w-full md:max-w-[400px] rounded-md border border-border"}
+                  />
+                </StageCard>
+              ) : null
+            )}
 
             <RecognizedTextCard
               text={result.plate_text}

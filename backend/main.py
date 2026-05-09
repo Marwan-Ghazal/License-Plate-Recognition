@@ -93,10 +93,7 @@ async def recognize(file: UploadFile = File(...)) -> dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pipeline error: {e}") from e
 
-    if not result.get("plate_text"):
-        raise HTTPException(status_code=422, detail="no_plate_detected")
-
-    # Persist to DB
+    # Persist to DB (even if plate_text is empty — stages may still be useful)
     plate_id = db.insert_plate(
         run_id=run_id,
         plate_text=result["plate_text"],

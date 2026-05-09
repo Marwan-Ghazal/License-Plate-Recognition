@@ -3,14 +3,14 @@ export interface HealthResponse {
 }
 
 export interface RecognizeStages {
-  grayscale: string;
-  bilateral: string;
-  edges: string;
-  morphology: string;
-  contours: string;
-  warped: string;
-  binary: string;
-  segmented: string;
+  grayscale?: string;
+  bilateral?: string;
+  edges?: string;
+  morphology?: string;
+  contours?: string;
+  warped?: string;
+  binary?: string;
+  segmented?: string;
 }
 
 export interface RecognizeResponse {

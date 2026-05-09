@@ -18,17 +18,9 @@ import cv2
 import numpy as np
 
 from .utils import load_image, save_debug
-
-# Person 1
 from .preprocessing import preprocess, detect_edges
-
-# Person 2
-from .localization import apply_morphological_closing, filter_candidates, find_contours, preprocess_edge_map
-
-# Person 3
+from .localization import localize, preprocess_edge_map, apply_morphological_closing
 from .normalization import binarize, clean_binary, warp_plate
-
-# Person 4
 from .recognition import recognize
 
 
@@ -67,18 +59,18 @@ def run_pipeline(image_bgr: np.ndarray, run_id: str, outputs_dir: Path) -> dict:
         print(f"[ERROR] detect_edges: {e}")
         edges = None
 
-    # 4. Morphology + contour filtering
+    # 4–5. Localization (morphology + contour filtering)
     try:
         if edges is None:
             raise ValueError("edges is None")
 
+        candidates = localize(edges)
+
+        # Debug: morphology mask (from first internal step)
         binary_edge = preprocess_edge_map(edges)
-        mask = apply_morphological_closing(binary_edge, kw=25, kh=7)
+        mask = apply_morphological_closing(binary_edge)
         save_debug(mask, "morphology", run_dir)
         result["morphology"] = str(run_dir / "morphology.png")
-
-        contours = find_contours(mask)
-        candidates = filter_candidates(contours, mask.shape)
 
         contour_vis = bgr.copy()
         for d in candidates[:3]:
@@ -86,54 +78,52 @@ def run_pipeline(image_bgr: np.ndarray, run_id: str, outputs_dir: Path) -> dict:
         save_debug(contour_vis, "contours", run_dir)
         result["contours"] = str(run_dir / "contours.png")
     except Exception as e:
-        print(f"[ERROR] morphology: {e}")
+        print(f"[ERROR] localization: {e}")
         candidates = []
 
-    # 5. Plate detection — pick best candidate
-    try:
-        if not candidates:
-            quad = None
-        else:
-            best = candidates[0]
-            rect = cv2.minAreaRect(best["contour"])
-            quad = cv2.boxPoints(rect).astype(np.float32)
-    except Exception as e:
-        print(f"[ERROR] plate detection: {e}")
-        quad = None
+    # 5b–8. Try each candidate: warp → binarize → OCR, keep first with text ≥ 3 chars
+    plate = None
+    binary = None
+    for cand in (candidates or []):
+        try:
+            trial_plate = warp_plate(bgr, cand["corners"], target_size=(300, 75))
+            trial_binary = binarize(trial_plate, method="otsu")
+            trial_text = recognize(trial_binary)
+            if len(trial_text) >= 3:
+                plate = trial_plate
+                binary = trial_binary
+                plate_text = trial_text
+                break
+        except Exception:
+            continue
 
-    # 6. Warp plate
+    # Save the winning warp/binary (or blank placeholders if none found)
     try:
-        if quad is None:
-            plate = None
-        else:
-            plate = warp_plate(bgr, quad, target_size=(300, 75))
+        if plate is not None:
             save_debug(plate, "warped", run_dir)
-            result["warped"] = str(run_dir / "warped.png")
-    except Exception as e:
-        print(f"[ERROR] warp: {e}")
-        plate = None
-
-    # 7. Binarization
-    try:
-        if plate is None:
-            binary = None
         else:
-            binary = clean_binary(binarize(plate, method="otsu"))
-            save_debug(binary, "binary", run_dir)
-            result["binary"] = str(run_dir / "binary.png")
+            save_debug(np.zeros((75, 300, 3), dtype=np.uint8), "warped", run_dir)
+        result["warped"] = str(run_dir / "warped.png")
     except Exception as e:
-        print(f"[ERROR] binarize: {e}")
-        binary = None
+        print(f"[ERROR] save warped: {e}")
 
-    # 8. Segmentation + recognition
     try:
         if binary is not None:
-            plate_text = recognize(binary)
-        save_debug(binary if binary is not None else np.zeros((75, 300), dtype=np.uint8),
-                    "segmented", run_dir)
+            save_debug(binary, "binary", run_dir)
+        else:
+            save_debug(np.zeros((75, 300), dtype=np.uint8), "binary", run_dir)
+        result["binary"] = str(run_dir / "binary.png")
+    except Exception as e:
+        print(f"[ERROR] save binary: {e}")
+
+    try:
+        if binary is not None:
+            save_debug(binary, "segmented", run_dir)
+        else:
+            save_debug(np.zeros((75, 300), dtype=np.uint8), "segmented", run_dir)
         result["segmented"] = str(run_dir / "segmented.png")
     except Exception as e:
-        print(f"[ERROR] recognition: {e}")
+        print(f"[ERROR] save segmented: {e}")
 
     result["plate_text"] = plate_text
     return result
